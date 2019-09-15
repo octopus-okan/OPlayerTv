@@ -1,4 +1,4 @@
-package com.zhuchao.android.utils;
+package Myutils;
 
 import android.content.Intent;
 import android.net.Uri;

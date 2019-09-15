@@ -23,7 +23,7 @@ import android.util.Log;
 import android.view.ViewGroup;
 
 import com.bumptech.glide.Glide;
-import com.zhuchao.android.utils.OpenFileUtil;
+import Myutils.OpenFileUtil;
 import com.zhuchao.android.video.Video;
 
 import java.io.File;

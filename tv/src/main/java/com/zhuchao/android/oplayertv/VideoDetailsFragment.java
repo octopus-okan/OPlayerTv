@@ -183,7 +183,7 @@ public class VideoDetailsFragment extends DetailsFragment {
 
     private void setupRelatedMovieListRow() {
         String subcategories[] = {getString(R.string.related_movies)};
-        /*List<Video> list = MediaLibrary.getMediaList();
+        /*List<Video> list = MediaLibrary.getMediaListByIndex();
 
         Collections.shuffle(list);
         ArrayObjectAdapter listRowAdapter = new ArrayObjectAdapter(new CardPresenter());

@@ -14,7 +14,6 @@
 
 package com.zhuchao.android.oplayertv;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -24,6 +23,7 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.Settings;
 import android.support.v17.leanback.app.BackgroundManager;
 import android.support.v17.leanback.app.BrowseFragment;
 import android.support.v17.leanback.widget.ArrayObjectAdapter;
@@ -55,6 +55,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
+import com.zhuchao.android.playsession.OPlayerSession;
 import com.zhuchao.android.playsession.SessionCompleteCallback;
 import com.zhuchao.android.shapeloading.ShapeLoadingDialog;
 import com.zhuchao.android.video.Movie;
@@ -66,7 +67,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import static com.zhuchao.android.oplayertv.MediaLibrary.MOVIE_CATEGORY;
-import static com.zhuchao.android.oplayertv.OplayerApplication.ClearOpsM;
 
 
 public class MainFragment extends BrowseFragment implements SessionCompleteCallback {
@@ -88,8 +88,9 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
     private ShapeLoadingDialog mShapeLoadingDialog = null;
     private ArrayObjectAdapter rowsAdapter = new ArrayObjectAdapter(new ListRowPresenter());
     private CardPresenter cardPresenter = new CardPresenter();
-    private final int mDrawableID[] = {R.drawable.bg0,R.drawable.bg1,R.drawable.bg2};
+    private final int mDrawableID[] = {R.drawable.bg0, R.drawable.bg1, R.drawable.bg2};
     private int mDrawableIndex = 0;
+
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         Log.i(TAG, "onCreate");
@@ -98,9 +99,22 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
         prepareBackgroundManager();
         setupUIElements();
 
-        OplayerApplication.getOpsM().setUserSessionCallback(this);
-        if (!MediaLibrary.isInitComplete())
-            showLoadingDialog(getActivity(), true);
+        MediaLibrary.getSessionManager(getActivity()).setUserSessionCallback(this);
+        //if (!MediaLibrary.isSessionManagerInitComplete())
+        //   showLoadingDialog(getActivity(), true);
+
+//        Intent intent = null;
+//        intent.setPackage("com.android.time.service");
+//        try {
+//            if (checkApkExist(getActivity(), "com.android.time.service"))
+//                startActivity(intent);
+//            else
+//                Log.d(TAG,"没有找到应用"+"com.android.time.service");//Toast.makeText(getActivity(), "没有找到应用： " + map.get("package"), Toast.LENGTH_SHORT).show();
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            Log.d(TAG,"没有找到应用"+"com.android.time.service");//Toast.makeText(getActivity(), "没有找到应用： " + map.get("package"), Toast.LENGTH_SHORT).show();
+//        }
+
     }
 
     @Override
@@ -110,7 +124,7 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
             Log.d(TAG, "onDestroy: " + mBackgroundTimer.toString());
             mBackgroundTimer.cancel();
         }
-        ClearOpsM();
+        MediaLibrary.ClearOPlayerSessionManager();
     }
 
     private void prepareBackgroundManager() {
@@ -130,6 +144,12 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
     public void onResume() {
         super.onResume();
         mBackgroundManager.setDrawable(ContextCompat.getDrawable(getContext(), R.drawable.bg0));
+        try {
+            loadMediaDataFromSessionManager();
+            setupEventListeners();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void setupUIElements() {
@@ -147,29 +167,34 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
         setSearchAffordanceColor(ContextCompat.getColor(getContext(), R.color.search_opaque));
     }
 
-    private boolean loadMediaData() {
-        List<Video> list = null;//
+    private boolean loadMediaDataFromSessionManager() {
+
+        //if (!MediaLibrary.isSessionManagerInitComplete()) return false;
+        MediaLibrary.getSessionManager(getActivity());
+
         MediaLibrary.setupCategoryList();
         rowsAdapter.clear();
         int i;
         for (i = 0; i < MOVIE_CATEGORY.size(); i++) {   //NUM_ROWS
-            list = MediaLibrary.getMediaList(i);
+            List<Video> list = MediaLibrary.getMediaListByIndex(i);
 
             ArrayObjectAdapter listRowAdapter = new ArrayObjectAdapter(cardPresenter);
+
             if (list != null) {
                 for (int j = 0; j < list.size(); j++) {//NUM_COLS
                     listRowAdapter.add(list.get(j));
                 }
             }
+
             HeaderItem header = new HeaderItem(i, MOVIE_CATEGORY.get(i).toString());
             rowsAdapter.add(new ListRow(header, listRowAdapter));
         }
 
-        HeaderItem gridHeader = new HeaderItem(i, "我的信息");
+        HeaderItem gridHeader = new HeaderItem(i, "关于视频");
         GridItemPresenter mGridPresenter = new GridItemPresenter();
         ArrayObjectAdapter gridRowAdapter = new ArrayObjectAdapter(mGridPresenter);
         gridRowAdapter.add(getString(R.string.my_favorites));
-        gridRowAdapter.add(getResources().getString(R.string.personal_settings));
+        gridRowAdapter.add(getResources().getString(R.string.system_settings));
         rowsAdapter.add(new ListRow(gridHeader, gridRowAdapter));
 
 
@@ -268,11 +293,19 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
                 }
 
 
-            } else if (item instanceof String) {
+            } else if (item instanceof String)
+            {
                 if (((String) item).contains(getString(R.string.my_favorites))) {
                     Intent intent = new Intent(getActivity(), BrowseErrorActivity.class);
                     startActivity(intent);
-                } else {
+                }
+                else if (((String) item).contains(getString(R.string.system_settings)))
+                {
+                    Intent intent = new Intent(Settings.ACTION_SETTINGS);
+                    startActivity(intent);
+                }
+                else
+                {
                     ;//Toast.makeText(getActivity(), ((String) item), Toast.LENGTH_SHORT).show();
                 }
             }
@@ -296,7 +329,7 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
     private void updateBackground(String uri) {
         int width = mMetrics.widthPixels;
         int height = mMetrics.heightPixels;
-         Glide.with(getActivity())
+        Glide.with(getActivity())
                 .load(uri)
                 .centerCrop()
                 .error(mDefaultBackground)
@@ -310,7 +343,7 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
                 });
 
         mBackgroundManager.setDrawable(ContextCompat.getDrawable(getContext(), mDrawableID[mDrawableIndex]));
-        if (mDrawableIndex < mDrawableID.length -1) mDrawableIndex ++;
+        if (mDrawableIndex < mDrawableID.length - 1) mDrawableIndex++;
         else
             mDrawableIndex = 0;
         //mBackgroundTimer.cancel();
@@ -408,8 +441,29 @@ public class MainFragment extends BrowseFragment implements SessionCompleteCallb
     Handler mMyHandler = new Handler() {
         @Override
         public void handleMessage(Message msg) {
+
+            if (msg.what == 9)
+            {
+                //MediaLibrary.getSessionManager(getActivity()).getMoBileSession().printMovies();
+                Intent intent = new Intent(getActivity(), FullscreenPlayBackActivity.class);
+                OPlayerSession op = MediaLibrary.getSessionManager(getActivity()).getMoBileSession();
+
+                Video video = op.getVideoByIndex(0);
+
+                if (video != null)
+                {
+                    Log.d("MyService", video.getmMovie().getSourceUrl().toString());
+                    intent.putExtra("Video", video);
+                    startActivity(intent);
+                }
+                else
+                    Log.d("MyService","没有发现媒体资源 "+op.getVideos().size());
+
+            }
+
+
             try {
-                loadMediaData();
+                loadMediaDataFromSessionManager();
                 setupEventListeners();
                 showLoadingDialog(getActivity(), false);
             } catch (Exception e) {

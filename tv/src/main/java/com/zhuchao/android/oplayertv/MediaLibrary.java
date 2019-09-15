@@ -14,35 +14,124 @@
 
 package com.zhuchao.android.oplayertv;
 
+import android.content.Context;
+import android.util.Log;
+
 import com.zhuchao.android.playsession.OPlayerSession;
 import com.zhuchao.android.playsession.OPlayerSessionManager;
+import com.zhuchao.android.playsession.SchedulePlaybackSession;
 import com.zhuchao.android.video.Video;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public final class MediaLibrary {
+public final class MediaLibrary { // implements SessionCompleteCallback
+    private static final String TAG = "MediaLibrary ---------->";
     private static long count = 0;
     private static String MobileBlockName = null;
     private static String MobileBlockPath = null;
-    private static OPlayerSessionManager mSessionManager = OplayerApplication.getOpsM();
+    public static SchedulePlaybackSession schedulePlaybackSession = null;
+
+    //获得OPlayerSessionManager，也就是媒体库的入口
+    private static OPlayerSessionManager mSessionManager = null;
+
+    //mSessions这里面保存的是媒体库的分类对象信息，例如：直播、电影、USB、FTP、
+    //注意这里存储的是对象OPlayerSession
     private static Map<Integer, OPlayerSession> mSessions = null;// new HashMap<Integer, OPlayerSession>();
+
+    //mVideoCategory 保存是分类的名字，每个分类都有一个名字和ID 例如：直播、电影、电视、本地音乐、USB音乐、图片
+    //这里存储的是对象的名字和ID
     public static Map<Integer, String> mVideoCategory = null;//new HashMap<Integer, String>();
+    //mVideoTypes 这个里面存储媒体库中媒体的类型名字例如：恐怖、戏剧、动作、科幻 等等
     public static Map<Integer, String> mVideoTypes = null;//new HashMap<Integer, String>();
-    public static ArrayList MOVIE_CATEGORY = new ArrayList();
-    public static ArrayList MOVIE_Types = new ArrayList();
 
-    public static void setupCategoryList() {
 
-        //LocalSession = mSessionManager.initLocalSessionContent(OplayerApplication.getAppContext());
-        if (mVideoCategory == null)
-            mVideoCategory = mSessionManager.getmTopSession().getmVideoCategoryNameList();//获取大的分类列表
-        if (mVideoTypes == null)
-            mVideoTypes = mSessionManager.getmTopSession().getmVideoTypeNameList();//获取视频类型信息
-        setupVideoCategory();
+    //下面两个数组是适配用的，可以根据自己项目选择是否需要是使用它
+    public static ArrayList MOVIE_CATEGORY = new ArrayList();//存储对象的名字
+    public static ArrayList MOVIE_Types = new ArrayList();//存储媒体库中媒体的类型名字例如：恐怖、戏剧、动作、科幻
+
+
+    public static synchronized OPlayerSessionManager getSessionManager(Context context) {//通过上下文得到实例，用实例去调用非静态方法
+        if (mSessionManager == null)
+            mSessionManager = new OPlayerSessionManager(context, null, null);
+        return mSessionManager;
+        //return mSessionManager == null ? (new OPlayerSessionManager(context,null, null)) : mSessionManager;
     }
 
-    public static void setupVideoCategory() {
+    //释放OPlayerSessionManager
+    public static void ClearOPlayerSessionManager() {
+        mSessionManager = null;
+    }
+
+
+    //下面这个方法是初始化媒体库到本地UI 的方法，必须在OPlayerSessionManager 对象创建完成后，
+    //在OPlayerSessionManager的回调方法中使用该方法来初始化本地UI，否则无法获得媒体资源
+    public static void setupCategoryList() {
+        //if (mVideoCategory == null)
+        mVideoCategory = mSessionManager.getmTopSession().getmVideoCategoryNameList();//获取大的分类列表
+        //if (mVideoTypes == null)
+        mVideoTypes = mSessionManager.getmTopSession().getmVideoTypeNameList();//获取视频类型信息
+
+        InitVideoArrayList();//将mVideoCategory Map 转换成 ArrayList 根据项目可以不需要
+    }
+
+    //在OPlayerSessionManager创建和初始化完成后，调用该方法，打印输出会话里面的媒体ID,名字
+    //通过这个方法知道都有哪些媒体会话资源，知道它们的ID,方便后续根据根据ID 获得自己需要的媒体资源
+    public static void printCategoryList() {
+        for (Map.Entry<Integer, OPlayerSession> entry : mSessions.entrySet()) {
+            Log.d(TAG, "ID=" + entry.getKey() + " CategoryName=" + entry.getValue());
+        }
+    }
+
+    //该方法可以获得具体的媒体列表，可以播放的媒体资源列表，例如、在线电影、电视、音乐、USB 音乐
+    //通过调用这个方法获得列表 创建本地 UI界面
+    //参数是MOVIE_CATEGORY 的ID,这个ID 是固定的，由OPlayerSessionManager 分配
+    //返回值是videos列表，每个video对象可以是视频、音乐、图片
+    //通过video.with(this).playInto(mSurfaceView); 这样的调用形式可以将这个媒体播放出来
+    public static List<Video> getMediaListByID(int categoryID) {
+        List<Video> videos = null;
+        if (mSessionManager.isInitComplete() && (categoryID > 0)) {
+            mSessions = mSessionManager.getmSessions();//获取板块分类集合
+            videos = mSessions.get(categoryID).getVideos();//从集合中得到直播视频列表
+        }
+        return videos;
+    }
+
+    //该方法可以获得具体的媒体列表，可以播放的媒体资源列表，例如、在线电影、电视、音乐、USB 音乐
+    //通过调用这个函数获得列表 创建本地 UI界面
+    //参数是MOVIE_CATEGORY 的Index 不是CATEGORY ID 如果不用MOVIE_CATEGORY数组来适配，则该方法无效
+    //
+    public static List<Video> getMediaListByIndex(int categoryIndex) {
+        List<Video> videos = null;
+        String categoryName = MOVIE_CATEGORY.get(categoryIndex).toString();
+        int categoryId = getCategoryIdByValue(categoryName);
+
+        if (mSessionManager.isInitComplete() && (categoryId > 0)) {
+            mSessions = mSessionManager.getmSessions();//获取板块分类集合
+            if (mSessions.get(categoryId) != null)
+                videos = mSessions.get(categoryId).getVideos();//从集合中得到直播视频列表
+        }
+        return videos;
+    }
+
+    //当U盘插上的时候调用该方法，该方法会得到U盘中的所有媒体资源包括图片、音乐、视频
+    public static void updateMobileMedia(String DeviceName, String DevicePath) {
+        if (mSessionManager == null) return;
+        mSessionManager.initSessionFromMobileDisc();
+
+        if(schedulePlaybackSession !=null)
+            schedulePlaybackSession.updateSchedulePlaybackSession();
+    }
+
+    //该方法判断mSessionManager 是否完成了媒体库的创建和初始化
+    public static boolean isSessionManagerInitComplete() {
+        if (mSessionManager == null) return false;
+        return mSessionManager.isInitComplete();
+    }
+
+    //将mVideoCategory Map 转换成 ArrayList 根据项目可以不需要
+    private static void InitVideoArrayList() {
         MOVIE_CATEGORY.clear();
         mSessions = mSessionManager.getmSessions();
         for (Map.Entry<Integer, OPlayerSession> entry : mSessions.entrySet()) {
@@ -56,24 +145,7 @@ public final class MediaLibrary {
         }
     }
 
-    public static void updateMobileMedia(String DeviceName, String DevicePath) {
-       mSessionManager.initSessionFromMobileDisc();
-    }
-
-    public static List<Video> getMediaList(int categoryIndex) {
-        List<Video> videos = null;
-        String categoryName = MOVIE_CATEGORY.get(categoryIndex).toString();
-        int categoryId = getCategoryIdByValue(categoryName);
-
-        if (mSessionManager.isInitComplete() && (categoryId > 0)) {
-            mSessions = mSessionManager.getmSessions();//获取板块分类集合
-            videos = mSessions.get(categoryId).getVideos();//从集合中得到直播视频列表
-        }
-        return videos;
-    }
-
-
-    public static int getCategoryIdByValue(String value) {
+    private static int getCategoryIdByValue(String value) {
         for (Map.Entry entry : mVideoCategory.entrySet()) {
             if (value.equals(entry.getValue()))
                 return (int) entry.getKey();
@@ -81,91 +153,25 @@ public final class MediaLibrary {
         return -10;
     }
 
-    public static boolean isInitComplete() {
-        return mSessionManager.isInitComplete();
+    //该方法为OPlayerSessionManager 的回调方法，当OPlayerSessionManager 完成了一个任务后，
+    // 或者媒体库有更新会回调该方法
+    //SessionCompleteCallback 该接口也可以放到具体的ACTIVITY 中去实现，方便更新UI
+/*    @Override
+    public void OnSessionComplete(int i, String s) {
+        Message msg = new Message();
+        msg.what = i;
+        mMyHandler.sendMessage(msg);
     }
 
-
-    /*
-     public static  String MOVIE_CATEGORY[] = {
-            "Category Zero",
-            "Category One",
-            "Category Two",
-            "Category Three",
-            "Category Four",
-            "Category Five",
-    };*/
-   /*
-    public static List<Movie> setupMovies() {
-        list = new ArrayList<>();
-        String title[] = {
-                "Zeitgeist 2010_ Year in Review",
-                "Google Demo Slam_ 20ft Search",
-                "Introducing Gmail Blue",
-                "Introducing Google Fiber to the Pole",
-                "Introducing Google Nose"
-        };
-
-        String description = "Fusce id nisi turpis. Praesent viverra bibendum semper. "
-                + "Donec tristique, orci sed semper lacinia, quam erat rhoncus massa, non congue tellus est "
-                + "quis tellus. Sed mollis orci venenatis quam scelerisque accumsan. Curabitur a massa sit "
-                + "amet mi accumsan mollis sed et magna. Vivamus sed aliquam risus. Nulla eget dolor in elit "
-                + "facilisis mattis. Ut aliquet luctus lacus. Phasellus nec commodo erat. Praesent tempus id "
-                + "lectus ac scelerisque. Maecenas pretium cursus lectus id volutpat.";
-        String studio[] = {
-                "Studio Zero", "Studio One", "Studio Two", "Studio Three", "Studio Four"
-        };
-        String videoUrl[] = {
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/Zeitgeist/Zeitgeist%202010_%20Year%20in%20Review.mp4",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/Demo%20Slam/Google%20Demo%20Slam_%2020ft%20Search.mp4",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Gmail%20Blue.mp4",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Google%20Fiber%20to%20the%20Pole.mp4",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Google%20Nose.mp4"
-        };
-        String bgImageUrl[] = {
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/Zeitgeist/Zeitgeist%202010_%20Year%20in%20Review/bg.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/Demo%20Slam/Google%20Demo%20Slam_%2020ft%20Search/bg.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Gmail%20Blue/bg.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Google%20Fiber%20to%20the%20Pole/bg.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Google%20Nose/bg.jpg",
-        };
-        String cardImageUrl[] = {
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/Zeitgeist/Zeitgeist%202010_%20Year%20in%20Review/card.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/Demo%20Slam/Google%20Demo%20Slam_%2020ft%20Search/card.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Gmail%20Blue/card.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Google%20Fiber%20to%20the%20Pole/card.jpg",
-                "http://commondatastorage.googleapis.com/android-tv/Sample%20videos/April%20Fool's%202013/Introducing%20Google%20Nose/card.jpg"
-        };
-
-        for (int index = 0; index < title.length; ++index) {
-            list.add(
-                    buildMovieInfo(
-                            title[index],
-                            description,
-                            studio[index],
-                            videoUrl[index],
-                            cardImageUrl[index],
-                            bgImageUrl[index]));
+    Handler mMyHandler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+            try {
+                if (isSessionManagerInitComplete())
+                    setupCategoryList();//例如在里建立媒体库资源，和处理其它事情
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
-
-        return list;
-    }
-
-    private static Movie buildMovieInfo(
-            String title,
-            String description,
-            String studio,
-            String videoUrl,
-            String cardImageUrl,
-            String backgroundImageUrl) {
-        Movie movie = new Movie();
-        movie.setId(count++);
-        movie.setTitle(title);
-        movie.setDescription(description);
-        movie.setStudio(studio);
-        movie.setCardImageUrl(cardImageUrl);
-        movie.setBackgroundImageUrl(backgroundImageUrl);
-        movie.setVideoUrl(videoUrl);
-        return movie;
-    }*/
+    };*/
 }

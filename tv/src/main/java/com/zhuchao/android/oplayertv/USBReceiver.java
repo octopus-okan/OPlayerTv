@@ -9,8 +9,6 @@ import android.os.storage.StorageManager;
 import android.text.TextUtils;
 import android.util.Log;
 
-import com.zhuchao.android.utils.MediaFile;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -19,6 +17,8 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+
+import Myutils.MediaFile;
 
 public class USBReceiver extends BroadcastReceiver {
     private static final String TAG = USBReceiver.class.getSimpleName();
